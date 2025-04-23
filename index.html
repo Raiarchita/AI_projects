@@ -1,0 +1,191 @@
+<!DOCTYPE html> 
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Adaptive Trivia Test</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      margin: 2em;
+      background-color: #f9f9f9;
+      color: #333;
+    }
+
+    h1 {
+      color: #2c3e50;
+    }
+
+    .question-box {
+      margin-bottom: 1.5em;
+      background-color: #fff;
+      padding: 1.5em;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+    }
+
+    .result {
+      font-weight: bold;
+      margin-top: 1em;
+      font-size: 1.1em;
+    }
+
+    .progress {
+      margin-bottom: 1em;
+      font-weight: bold;
+      font-size: 1.1em;
+    }
+
+    .option-button {
+      display: block;
+      width: 100%;
+      padding: 12px 16px;
+      margin: 10px 0;
+      background-color: #3498db;
+      color: white;
+      font-size: 1em;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+      text-align: left;
+    }
+
+    .option-button:hover {
+      background-color: #2980b9;
+    }
+
+    .restart-btn {
+      margin-top: 2em;
+      padding: 0.7em 1.2em;
+      font-size: 1em;
+      font-weight: bold;
+      background: #e74c3c;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+
+    .restart-btn:hover {
+      background-color: #c0392b;
+    }
+
+    .difficulty-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      font-size: 0.85em;
+      border-radius: 5px;
+      margin-top: 0.5em;
+      background-color: #ecf0f1;
+      color: #7f8c8d;
+    }
+
+    .difficulty-easy { background-color: #2ecc71; color: white; }
+    .difficulty-medium { background-color: #f39c12; color: white; }
+    .difficulty-hard { background-color: #e74c3c; color: white; }
+  </style>
+</head>
+<body>
+  <h1>🌍 Adaptive Trivia Test</h1>
+  <div class="progress" id="progress"></div>
+  <div class="question-box" id="question-box">Loading question...</div>
+  <div id="result" class="result"></div>
+  <div id="controls"></div>
+  <div id="restart-container"></div>
+
+  <script>
+    let questionCount = 0;
+
+    async function fetchQuestion() {
+      try {
+        const res = await fetch('/get-question');
+        const data = await res.json();
+
+        const box = document.getElementById('question-box');
+        const controls = document.getElementById('controls');
+        const result = document.getElementById('result');
+        const progress = document.getElementById('progress');
+        const restartContainer = document.getElementById('restart-container');
+        result.textContent = '';
+        restartContainer.innerHTML = '';
+
+        if (data.error) {
+          box.innerHTML = `<p>⚠️ ${data.error}</p>`;
+          controls.innerHTML = '';
+          return;
+        }
+
+        if (data.finished) {
+          const res = await fetch('/results');
+          const summary = await res.json();
+          box.innerHTML = `<h2>✅ Final Score: ${summary.score}/10</h2>`;
+          controls.innerHTML = '';
+          progress.textContent = "🎯 You completed the quiz!";
+
+          if (Array.isArray(summary.history)) {
+            summary.history.forEach((q, i) => {
+              box.innerHTML += `
+                <p><strong>Q${i + 1} (${q.difficulty}):</strong> ${q.question}<br>
+                Your answer: ${q.user_answer} <br>
+                Correct answer: ${q.correct_answer} <br>
+                ${q.correct ? '✅ Correct' : '❌ Incorrect'}</p>
+              `;
+            });
+          } else {
+            box.innerHTML += `<p>⚠️ No history available.</p>`;
+          }
+
+          restartContainer.innerHTML = `<button class="restart-btn" onclick="restartQuiz()">🔁 Restart Quiz</button>`;
+          return;
+        }
+
+        questionCount++;
+        progress.textContent = `📘 Question ${questionCount} of 10`;
+
+        const difficultyClass = {
+          easy: 'difficulty-easy',
+          medium: 'difficulty-medium',
+          hard: 'difficulty-hard'
+        }[data.difficulty] || '';
+
+        box.innerHTML = `
+          <h3>${data.question}</h3>
+          <span class="difficulty-badge ${difficultyClass}">${data.difficulty.toUpperCase()}</span>
+        `;
+
+        controls.innerHTML = '';
+        data.options.forEach(opt => {
+          const btn = document.createElement('button');
+          btn.className = 'option-button';
+          btn.textContent = opt;
+          btn.onclick = () => submitAnswer(opt);
+          controls.appendChild(btn);
+        });
+
+      } catch (error) {
+        document.getElementById('question-box').innerHTML = `<p>❌ Error loading question: ${error.message}</p>`;
+      }
+    }
+
+    async function submitAnswer(answer) {
+      const res = await fetch('/submit-answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answer })
+      });
+      const data = await res.json();
+      document.getElementById('result').textContent = data.correct
+        ? "✅ Correct!"
+        : `❌ Incorrect! Correct answer: ${data.correct_answer}`;
+      setTimeout(fetchQuestion, 1500);
+    }
+
+    function restartQuiz() {
+      window.location.href = '/';
+    }
+
+    fetchQuestion();
+  </script>
+</body>
+</html>
