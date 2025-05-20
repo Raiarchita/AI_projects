@@ -95,97 +95,112 @@
   <div id="restart-container"></div>
 
   <script>
-    let questionCount = 0;
 
-    async function fetchQuestion() {
-      try {
-        const res = await fetch('/get-question');
-        const data = await res.json();
+  let questionCount = 0;
+  const MAX_QUESTIONS = 10;
+  const MAX_RETRIES = 3;
 
+  async function fetchQuestionWithRetry(retries = MAX_RETRIES) {
+    try {
+      const res = await fetch('/get-question');
+      const data = await res.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      if (data.finished || questionCount >= MAX_QUESTIONS) {
+        const res = await fetch('/results');
+        const summary = await res.json();
         const box = document.getElementById('question-box');
         const controls = document.getElementById('controls');
-        const result = document.getElementById('result');
         const progress = document.getElementById('progress');
         const restartContainer = document.getElementById('restart-container');
+        const result = document.getElementById('result');
         result.textContent = '';
-        restartContainer.innerHTML = '';
 
-        if (data.error) {
-          box.innerHTML = `<p>⚠️ ${data.error}</p>`;
-          controls.innerHTML = '';
-          return;
-        }
-
-        if (data.finished) {
-          const res = await fetch('/results');
-          const summary = await res.json();
-          box.innerHTML = `<h2>✅ Final Score: ${summary.score}/10</h2>`;
-          controls.innerHTML = '';
-          progress.textContent = "🎯 You completed the quiz!";
-
-          if (Array.isArray(summary.history)) {
-            summary.history.forEach((q, i) => {
-              box.innerHTML += `
-                <p><strong>Q${i + 1} (${q.difficulty}):</strong> ${q.question}<br>
-                Your answer: ${q.user_answer} <br>
-                Correct answer: ${q.correct_answer} <br>
-                ${q.correct ? '✅ Correct' : '❌ Incorrect'}</p>
-              `;
-            });
-          } else {
-            box.innerHTML += `<p>⚠️ No history available.</p>`;
-          }
-
-          restartContainer.innerHTML = `<button class="restart-btn" onclick="restartQuiz()">🔁 Restart Quiz</button>`;
-          return;
-        }
-
-        questionCount++;
-        progress.textContent = `📘 Question ${questionCount} of 10`;
-
-        const difficultyClass = {
-          easy: 'difficulty-easy',
-          medium: 'difficulty-medium',
-          hard: 'difficulty-hard'
-        }[data.difficulty] || '';
-
-        box.innerHTML = `
-          <h3>${data.question}</h3>
-          <span class="difficulty-badge ${difficultyClass}">${data.difficulty.toUpperCase()}</span>
-        `;
-
+        box.innerHTML = `<h2>✅ Final Score: ${summary.score}/${MAX_QUESTIONS}</h2>`;
         controls.innerHTML = '';
-        data.options.forEach(opt => {
-          const btn = document.createElement('button');
-          btn.className = 'option-button';
-          btn.textContent = opt;
-          btn.onclick = () => submitAnswer(opt);
-          controls.appendChild(btn);
-        });
+        progress.textContent = "🎯 You completed the quiz!";
 
-      } catch (error) {
+        if (Array.isArray(summary.history)) {
+          summary.history.forEach((q, i) => {
+            box.innerHTML += `
+              <p><strong>Q${i + 1} (${q.difficulty}):</strong> ${q.question}<br>
+              Your answer: ${q.user_answer} <br>
+              Correct answer: ${q.correct_answer} <br>
+              ${q.correct ? '✅ Correct' : '❌ Incorrect'}</p>
+            `;
+          });
+        } else {
+          box.innerHTML += `<p>⚠️ No history available.</p>`;
+        }
+
+        restartContainer.innerHTML = `<button class="restart-btn" onclick="restartQuiz()">🔁 Restart Quiz</button>`;
+        return;
+      }
+
+      questionCount++;
+      const progress = document.getElementById('progress');
+      progress.textContent = `📘 Question ${questionCount} of ${MAX_QUESTIONS}`;
+
+      const box = document.getElementById('question-box');
+      const controls = document.getElementById('controls');
+      const result = document.getElementById('result');
+      const restartContainer = document.getElementById('restart-container');
+      result.textContent = '';
+      restartContainer.innerHTML = '';
+
+      const difficultyClass = {
+        easy: 'difficulty-easy',
+        medium: 'difficulty-medium',
+        hard: 'difficulty-hard'
+      }[data.difficulty] || '';
+
+      box.innerHTML = `
+        <h3>${data.question}</h3>
+        <span class="difficulty-badge ${difficultyClass}">${data.difficulty.toUpperCase()}</span>
+      `;
+
+      controls.innerHTML = '';
+      data.options.forEach(opt => {
+        const btn = document.createElement('button');
+        btn.className = 'option-button';
+        btn.textContent = opt;
+        btn.onclick = () => submitAnswer(opt);
+        controls.appendChild(btn);
+      });
+
+    } catch (error) {
+      if (retries > 0) {
+        document.getElementById('question-box').innerHTML = `<p>⏳ Retrying to load question... (${MAX_RETRIES - retries + 1}/${MAX_RETRIES})</p>`;
+        setTimeout(() => fetchQuestionWithRetry(retries - 1), 1000);
+      } else {
         document.getElementById('question-box').innerHTML = `<p>❌ Error loading question: ${error.message}</p>`;
       }
     }
+  }
 
-    async function submitAnswer(answer) {
-      const res = await fetch('/submit-answer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answer })
-      });
-      const data = await res.json();
-      document.getElementById('result').textContent = data.correct
-        ? "✅ Correct!"
-        : `❌ Incorrect! Correct answer: ${data.correct_answer}`;
-      setTimeout(fetchQuestion, 1500);
-    }
+  async function submitAnswer(answer) {
+    const res = await fetch('/submit-answer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answer })
+    });
+    const data = await res.json();
+    document.getElementById('result').textContent = data.correct
+      ? "✅ Correct!"
+      : `❌ Incorrect! Correct answer: ${data.correct_answer}`;
+    setTimeout(() => fetchQuestionWithRetry(), 1500); // delay for pacing
+  }
 
-    function restartQuiz() {
-      window.location.href = '/';
-    }
+  function restartQuiz() {
+    window.location.href = '/';
+  }
 
-    fetchQuestion();
+  fetchQuestionWithRetry();
+
+
   </script>
 </body>
 </html>
