@@ -1,1 +1,7 @@
-
+Designed a real-time adaptive quiz platform using Flask and external Trivia APIs, 
+incorporating a feedback loop mechanism to dynamically adjust question difficulty based on 
+user performance metrics, including previous round accuracy, response time, and historical 
+correctness. The system utilizes scoring logic and difficulty thresholds to escalate or reduce 
+complexity, ensuring a personalized learning experience. A dedicated dashboard tracks key 
+metrics such as score progression, response accuracy, and completion rate, making the platform 
+ideal for formative assessments or self-paced learning. 
