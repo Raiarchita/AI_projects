@@ -1,18 +1,25 @@
-from flask import Flask, render_template, request, jsonify, session 
+from flask import Flask, render_template, request, jsonify, session
 import requests
 import random
 import html
+import time
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"  # Needed for session management
+MAX_QUESTIONS = 10
+MAX_RETRIES = 3
 
 def fetch_trivia_question(difficulty):
-    url = f"https://opentdb.com/api.php?amount=10&category=18&type=multiple&difficulty={difficulty}"
-    response = requests.get(url)
-    if response.status_code == 200:
-        data = response.json()
-        if data['response_code'] == 0 and data['results']:
-            return data['results'][0]
+    url = f"https://opentdb.com/api.php?amount=1&category=18&type=multiple&difficulty={difficulty}"
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = requests.get(url, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                if data['response_code'] == 0 and data['results']:
+                    return data['results'][0]
+        except requests.RequestException:
+            time.sleep(1)
     return None
 
 def adjust_difficulty(current, correct):
@@ -27,6 +34,7 @@ def index():
     session['score'] = 0
     session['difficulty'] = 'easy'
     session['history'] = []
+    session['question_count'] = 0
     session['performance'] = {
         'easy': {'correct': 0, 'incorrect': 0},
         'medium': {'correct': 0, 'incorrect': 0},
@@ -36,14 +44,14 @@ def index():
 
 @app.route('/get-question')
 def get_question():
-    if session.get('score', 0) >= 10:
+    if session.get('score', 0) >= MAX_QUESTIONS or session.get('question_count', 0) >= MAX_QUESTIONS:
         return jsonify({'finished': True})
 
     difficulty = session.get('difficulty', 'easy')
     q = fetch_trivia_question(difficulty)
 
     if not q:
-        return jsonify({'error': 'Unable to fetch question'}), 500
+        return jsonify({'error': 'Unable to fetch question after several attempts. Please try again later.'}), 500
 
     question_text = html.unescape(q['question'])
     correct_answer = html.unescape(q['correct_answer'])
@@ -56,6 +64,8 @@ def get_question():
         'difficulty': difficulty,
         'options': options
     }
+
+    session['question_count'] += 1
 
     return jsonify({
         'question': question_text,
